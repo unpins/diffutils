@@ -1,0 +1,376 @@
+--- a/src/diff.c
++++ b/src/diff.c
+@@ -960,8 +960,16 @@
+ {
+   if (ferror (stdout))
+     fatal ("write failed");
++#ifdef UNPIN_MULTICALL
++  /* In the multicall binary diff_main may run in-process (diff3/sdiff's
++     fork-free path), so it must NOT fclose the shared stdout -- only flush
++     and check. The real close happens once, at process exit. */
++  else if (fflush (stdout) != 0)
++    pfatal_with_name (_("standard output"));
++#else
+   else if (fclose (stdout) != 0)
+     pfatal_with_name (_("standard output"));
++#endif
+ }
+ 
+ static char const *const option_help_msgid[] = {
+--- a/src/diff3.c
++++ b/src/diff3.c
+@@ -198,6 +198,46 @@
+ 
+ static char const *diff_program = DEFAULT_DIFF_PROGRAM;
+ 
++#ifdef UNPIN_MULTICALL
++/* The folded `diff' lives in this binary as the renamed entry point diff_main
++   (see diffutils/multicall.nix).  diff3/sdiff run it IN-PROCESS instead of
++   execvp-ing an external `diff', so the single multicall binary stays
++   standalone.  With a working fork (GNU/Linux, macOS) we run diff_main in a
++   forked child for free state isolation; without fork (native Windows / mingw)
++   we capture diff's stdout to a temp file and call diff_main directly in this
++   process.  UNPIN_TEST_NOFORK forces the fork-free path even where fork exists,
++   so it can be exercised on a POSIX dev box.  */
++extern int diff_main (int, char **);
++extern char const *program_name;
++# if ! HAVE_WORKING_FORK || defined UNPIN_TEST_NOFORK
++#  define UNPIN_INPROC_NOFORK 1
++/* Fresh temp file for the fork-free capture.  Returns an fd; stores the
++   malloc'd path in *NAME, to be unlinked + freed AFTER the fd is closed (native
++   Windows cannot unlink an open file).  gnulib mkstemp in the temp dir.  The
++   dir is $TMPDIR (POSIX) or $TMP / $TEMP (Windows), else P_tmpdir -- mingw's
++   P_tmpdir is the drive root "\\", unusable, so the Windows vars come first.  */
++static int
++unpin_diff_capture_fd (char **name)
++{
++  char const *dir = getenv ("TMPDIR");
++  if (! (dir && *dir)) dir = getenv ("TMP");
++  if (! (dir && *dir)) dir = getenv ("TEMP");
++  if (! (dir && *dir)) dir = P_tmpdir;
++  char *buf = xmalloc (strlen (dir) + sizeof "/unpin-diffXXXXXX");
++  strcpy (stpcpy (buf, dir), "/unpin-diffXXXXXX");
++  int fd = mkstemp (buf);
++  if (fd < 0)
++    {
++      free (buf);
++      *name = nullptr;
++    }
++  else
++    *name = buf;
++  return fd;
++}
++# endif
++#endif
++
+ /* Values for long options that do not have single-letter equivalents.  */
+ enum
+ {
+@@ -1122,7 +1162,38 @@
+   *ap++ = fileb;
+   *ap = nullptr;
+ 
+-#if HAVE_WORKING_FORK
++#if defined UNPIN_MULTICALL && defined UNPIN_INPROC_NOFORK
++
++  /* No fork here: run the folded diff in-process, capturing its stdout into a
++     temp file we read back below.  diff_main runs at most twice per diff3 run,
++     each time re-initializing from the identical argv, so the calls are
++     independent.  */
++  char *capture_name;
++  int fd = unpin_diff_capture_fd (&capture_name);
++  if (fd < 0)
++    perror_with_exit ("mkstemp");
++  int inproc_status;
++  {
++    int diff_argc = 0;
++    while (argv[diff_argc])
++      diff_argc++;
++    char const *saved_pn = program_name;
++    fflush (stdout);
++    int saved_fd = dup (STDOUT_FILENO);
++    if (saved_fd < 0 || dup2 (fd, STDOUT_FILENO) < 0)
++      perror_with_exit ("dup2");
++    optind = 0;
++    inproc_status = diff_main (diff_argc, (char **) argv);
++    fflush (stdout);
++    if (dup2 (saved_fd, STDOUT_FILENO) < 0)
++      perror_with_exit ("dup2");
++    close (saved_fd);
++    program_name = saved_pn;
++  }
++  if (lseek (fd, 0, SEEK_SET) < 0)
++    perror_with_exit ("lseek");
++
++#elif HAVE_WORKING_FORK
+ 
+   int fds[2];
+   if (pipe (fds) != 0)
+@@ -1139,11 +1210,26 @@
+           close (fds[1]);
+         }
+ 
++#ifdef UNPIN_MULTICALL
++      /* Run the folded diff in-process (still in this forked child).  Restart
++         getopt for the fresh argv, then flush so diff's output reaches the pipe
++         before _exit, which runs no stdio cleanup of its own.  */
++      {
++        int diff_argc = 0;
++        while (argv[diff_argc])
++          diff_argc++;
++        optind = 0;
++        int diff_status = diff_main (diff_argc, (char **) argv);
++        fflush (nullptr);
++        _exit (diff_status);
++      }
++#else
+       /* The cast to (char **) is needed for portability to older
+          hosts with a nonstandard prototype for execvp.  */
+       execvp (diff_program, (char **) argv);
+ 
+       _exit (errno == ENOENT ? 127 : 126);
++#endif
+     }
+ 
+   if (pid == -1)
+@@ -1193,25 +1279,40 @@
+   *output_placement = diff_result;
+ 
+   int werrno = 0;
++#if defined UNPIN_MULTICALL && defined UNPIN_INPROC_NOFORK
++
++  if (close (fd) != 0)
++    perror_with_exit ("close");
++  if (capture_name)
++    {
++      unlink (capture_name);
++      free (capture_name);
++    }
++  int status = inproc_status;
++
++#else
++
+   int wstatus;
+-#if ! HAVE_WORKING_FORK
++# if ! HAVE_WORKING_FORK
+ 
+   wstatus = pclose (fpipe);
+   if (wstatus == -1)
+     werrno = errno;
+ 
+-#else
++# else
+ 
+   if (close (fd) != 0)
+     perror_with_exit ("close");
+   if (waitpid (pid, &wstatus, 0) < 0)
+     perror_with_exit ("waitpid");
+ 
+-#endif
++# endif
+ 
+   int status = (! werrno && WIFEXITED (wstatus)
+                 ? WEXITSTATUS (wstatus) : INT_MAX);
+ 
++#endif
++
+   if (EXIT_TROUBLE <= status)
+     error (EXIT_TROUBLE, werrno,
+            _(status == 126
+--- a/src/sdiff.c
++++ b/src/sdiff.c
+@@ -51,6 +51,46 @@
+ static char const *editor_program = DEFAULT_EDITOR_PROGRAM;
+ static char const **diffargv;
+ 
++#ifdef UNPIN_MULTICALL
++/* The folded `diff' lives in this binary as the renamed entry point diff_main
++   (see diffutils/multicall.nix).  diff3/sdiff run it IN-PROCESS instead of
++   execvp-ing an external `diff', so the single multicall binary stays
++   standalone.  With a working fork (GNU/Linux, macOS) we run diff_main in a
++   forked child for free state isolation; without fork (native Windows / mingw)
++   we capture diff's stdout to a temp file and call diff_main directly in this
++   process.  UNPIN_TEST_NOFORK forces the fork-free path even where fork exists,
++   so it can be exercised on a POSIX dev box.  */
++extern int diff_main (int, char **);
++extern char const *program_name;
++# if ! HAVE_WORKING_FORK || defined UNPIN_TEST_NOFORK
++#  define UNPIN_INPROC_NOFORK 1
++/* Fresh temp file for the fork-free capture.  Returns an fd; stores the
++   malloc'd path in *NAME, to be unlinked + freed AFTER the fd is closed (native
++   Windows cannot unlink an open file).  gnulib mkstemp in the temp dir.  The
++   dir is $TMPDIR (POSIX) or $TMP / $TEMP (Windows), else P_tmpdir -- mingw's
++   P_tmpdir is the drive root "\\", unusable, so the Windows vars come first.  */
++static int
++unpin_diff_capture_fd (char **name)
++{
++  char const *dir = getenv ("TMPDIR");
++  if (! (dir && *dir)) dir = getenv ("TMP");
++  if (! (dir && *dir)) dir = getenv ("TEMP");
++  if (! (dir && *dir)) dir = P_tmpdir;
++  char *buf = xmalloc (strlen (dir) + sizeof "/unpin-diffXXXXXX");
++  strcpy (stpcpy (buf, dir), "/unpin-diffXXXXXX");
++  int fd = mkstemp (buf);
++  if (fd < 0)
++    {
++      free (buf);
++      *name = nullptr;
++    }
++  else
++    *name = buf;
++  return fd;
++}
++# endif
++#endif
++
+ static char *volatile tmpname;
+ static FILE *tmp;
+ 
+@@ -574,8 +614,21 @@
+       diffarg (argv[optind]);
+       diffarg (argv[optind + 1]);
+       diffarg (nullptr);
++#ifdef UNPIN_MULTICALL
++      /* No merge output: sdiff is just `diff -y'.  Hand the whole job to the
++         folded diff in-process and exit with its status (exit, not _exit, so
++         diff's stdout is flushed and its write-error check still runs).  */
++      {
++        int diff_argc = 0;
++        while (diffargv[diff_argc])
++          diff_argc++;
++        optind = 0;
++        exit (diff_main (diff_argc, (char **) diffargv));
++      }
++#else
+       execvp (diffargv[0], (char **) diffargv);
+       perror_fatal (squote (0, diffargv[0]));
++#endif
+     }
+   else
+     {
+@@ -602,7 +655,35 @@
+       trapsigs ();
+ 
+       FILE *diffout;
+-#if ! HAVE_WORKING_FORK
++#if defined UNPIN_MULTICALL && defined UNPIN_INPROC_NOFORK
++      int inproc_status;
++      char *capture_name = nullptr;
++      {
++        int cap_fd = unpin_diff_capture_fd (&capture_name);
++        if (cap_fd < 0)
++          perror_fatal ("mkstemp");
++        int diff_argc = 0;
++        while (diffargv[diff_argc])
++          diff_argc++;
++        char const *saved_pn = program_name;
++        fflush (stdout);
++        int saved_fd = dup (STDOUT_FILENO);
++        if (saved_fd < 0 || dup2 (cap_fd, STDOUT_FILENO) < 0)
++          perror_fatal ("dup2");
++        optind = 0;
++        inproc_status = diff_main (diff_argc, (char **) diffargv);
++        fflush (stdout);
++        if (dup2 (saved_fd, STDOUT_FILENO) < 0)
++          perror_fatal ("dup2");
++        close (saved_fd);
++        program_name = saved_pn;
++        if (lseek (cap_fd, 0, SEEK_SET) < 0)
++          perror_fatal ("lseek");
++        diffout = fdopen (cap_fd, "r");   /* unlinked after close, in status block */
++        if (! diffout)
++          perror_fatal ("fdopen");
++      }
++#elif ! HAVE_WORKING_FORK
+       {
+         char *command = system_quote_argv (SCI_SYSTEM, (char **) diffargv);
+         errno = 0;
+@@ -637,8 +718,22 @@
+                 close (diff_fds[1]);
+               }
+ 
++#ifdef UNPIN_MULTICALL
++            /* Run the folded diff in-process in this forked child (see the
++               diff3.c note); flush so its output reaches the pipe.  */
++            {
++              int diff_argc = 0;
++              while (diffargv[diff_argc])
++                diff_argc++;
++              optind = 0;
++              int diff_status = diff_main (diff_argc, (char **) diffargv);
++              fflush (nullptr);
++              _exit (diff_status);
++            }
++#else
+             execvp (diffargv[0], (char **) diffargv);
+             _exit (errno == ENOENT ? 127 : 126);
++#endif
+           }
+ 
+         close (diff_fds[1]);
+@@ -661,14 +756,23 @@
+       ck_fclose (out);
+ 
+       {
+-        int wstatus;
+         int werrno = 0;
+-
+-#if ! HAVE_WORKING_FORK
++        int status;
++#if defined UNPIN_MULTICALL && defined UNPIN_INPROC_NOFORK
++        ck_fclose (diffout);
++        if (capture_name)
++          {
++            unlink (capture_name);
++            free (capture_name);
++          }
++        status = inproc_status;
++#else
++        int wstatus;
++# if ! HAVE_WORKING_FORK
+         wstatus = pclose (diffout);
+         if (wstatus == -1)
+           werrno = errno;
+-#else
++# else
+         ck_fclose (diffout);
+         while (waitpid (diffpid, &wstatus, 0) < 0)
+           if (errno == EINTR)
+@@ -676,6 +780,9 @@
+           else
+             perror_fatal ("waitpid");
+         diffpid = 0;
++# endif
++        status = (! werrno && WIFEXITED (wstatus)
++                  ? WEXITSTATUS (wstatus) : INT_MAX);
+ #endif
+ 
+         if (tmpname)
+@@ -687,10 +794,25 @@
+         if (! interact_ok)
+           exiterr ();
+ 
+-        check_child_status (werrno, wstatus, EXIT_FAILURE, diffargv[0]);
++        /* Inlined check_child_status (…, EXIT_FAILURE): the exit code comes from
++           `status' directly, since a portable wait-status can't be rebuilt for
++           the in-process path (mingw WEXITSTATUS is identity, POSIX is >>8).  */
++        if (EXIT_FAILURE < status)
++          {
++            error (0, werrno,
++                   _(status == 126
++                     ? "subsidiary program %s could not be invoked"
++                     : status == 127
++                     ? "subsidiary program %s not found"
++                     : status == INT_MAX
++                     ? "subsidiary program %s failed"
++                     : "subsidiary program %s failed (exit status %d)"),
++                   quote (diffargv[0]), status);
++            exiterr ();
++          }
+         untrapsig (0);
+         checksigs ();
+-        exit (WEXITSTATUS (wstatus));
++        exit (status);
+       }
+     }
+   return EXIT_SUCCESS;			/* Fool '-Wall'.  */
