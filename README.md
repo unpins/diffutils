@@ -1,13 +1,13 @@
 # diffutils
 
-Standalone build of [GNU diffutils](https://www.gnu.org/software/diffutils/) — `cmp`, `diff`, `diff3`, and `sdiff`.
+[GNU diffutils](https://www.gnu.org/software/diffutils/) — `cmp`, `diff`, `diff3`, and `sdiff`, in a single self-contained binary built natively for Linux, macOS, and Windows.
 
 [![CI](https://github.com/unpins/diffutils/actions/workflows/diffutils.yml/badge.svg)](https://github.com/unpins/diffutils/actions)
 ![Linux](https://img.shields.io/badge/Linux-%E2%9C%93-success?logo=linux&logoColor=white)
 ![macOS](https://img.shields.io/badge/macOS-%E2%9C%93-success?logo=apple&logoColor=white)
 ![Windows](https://img.shields.io/badge/Windows-%E2%9C%93-success?logo=windows&logoColor=white)
 
-Part of the [unpins](https://unpins.org) project — native single-binary builds with no third-party runtime dependencies.
+Part of the [unpins](https://unpins.org) catalog; install it with [`unpin`](https://github.com/unpins/unpin): `unpin install diffutils`.
 
 ## Usage
 
@@ -36,6 +36,10 @@ unpin install diffutils
 | `diff3` | compare three files line by line |
 | `sdiff` | merge two files interactively, side by side |
 
+## Man pages
+
+`cmp.1`, `diff.1`, `diff3.1`, and `sdiff.1` are embedded in the binary — read with `unpin man diffutils`.
+
 ## Build locally
 
 ```bash
@@ -43,14 +47,7 @@ nix build
 ./result/bin/diffutils --version
 ```
 
-## Man pages
-
-`cmp.1`, `diff.1`, `diff3.1`, and `sdiff.1` are embedded in the binary — read with `unpin man diffutils`.
-
 ## Manual download
 
 The [Releases](https://github.com/unpins/diffutils/releases) page has standalone binaries.
 
-## License
-
-GPL-3.0-or-later (upstream diffutils).
