@@ -1,5 +1,5 @@
 {
-  description = "Standalone build of diffutils";
+  description = "GNU diffutils (cmp, diff, diff3, sdiff) as a single self-contained binary";
 
   nixConfig = {
     extra-substituters = [ "https://unpins.cachix.org" ];
