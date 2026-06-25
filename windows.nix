@@ -21,11 +21,12 @@
 #      gnulib `lib/savewd.c` on `waitpid`. We override `coreutils` to the native
 #      one (build-time presence only — PR_PROGRAM is set to bare `pr` below).
 #
-# Same multicall recipe as ./multicall.nix: rename each tool's `main` →
+# Hand-rolled multicall recipe (Windows-only — linux/darwin self-fold through
+# the unpin-llvm engine instead; see flake.nix): rename each tool's `main` →
 # {cmp,diff,diff3,sdiff}_main, ship a dispatcher.o, link the union of objects
 # with libver.a + lib/libdiffutils.a. mingw gcc has no fat-LTO, so the rename
 # could be objcopy, but diff3/sdiff must be RECOMPILED anyway (to pick up
-# -DUNPIN_MULTICALL); we recompile all four for uniformity with the native path.
+# -DUNPIN_MULTICALL); we recompile all four for uniformity.
 { unpins-lib }:
 pkgs:
 let
@@ -97,8 +98,8 @@ let
 
     postBuild = (oa.postBuild or "") + ''
       mkdir -p multicall
-      # applets.list (TSV name<TAB>fn) + shared Recipe-A dispatcher generator —
-      # same as ./multicall.nix. cmp/diff/diff3/sdiff are 1:1; an unknown/bare
+      # applets.list (TSV name<TAB>fn) + shared Recipe-A dispatcher generator.
+      # cmp/diff/diff3/sdiff are 1:1; an unknown/bare
       # name (incl. CI's renamed smoke.exe) routes to diff (defaultApplet). The
       # helper's copy_basename strips a trailing `.exe` and a `\\` dir prefix
       # before matching.
