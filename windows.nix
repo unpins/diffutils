@@ -78,10 +78,13 @@ let
     NIX_CFLAGS_COMPILE = (oa.NIX_CFLAGS_COMPILE or "") + " -Wno-error=incompatible-pointer-types";
 
     # Drop the baked `${coreutils}/bin/pr` PR_PROGRAM store path → bare `pr`
-    # (looked up on PATH at runtime; coreutils stays build-only). Same as native.
+    # (looked up on PATH at runtime; coreutils stays build-only). Pin the
+    # configure CACHE var: a *relative* PR_PROGRAM gets re-resolved against PATH
+    # by AC_PATH_PROG (re-baking a store path), so `ac_cv_path_PR_PROGRAM=pr` is
+    # what makes `#define PR_PROGRAM "pr"` stick. Same as native (flake.nix).
     configureFlags =
       (builtins.filter (f: !(pkgs.lib.hasPrefix "PR_PROGRAM=" f)) (oa.configureFlags or [ ]))
-      ++ [ "PR_PROGRAM=pr" ];
+      ++ [ "ac_cv_path_PR_PROGRAM=pr" ];
 
     # Patching src/diff3.c + src/sdiff.c bumps their mtime past the shipped
     # man/diff3.1 + man/sdiff.1, so make re-fires `<tool>.1: <tool>.c <tool>.x`

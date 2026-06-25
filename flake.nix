@@ -43,26 +43,27 @@
       # selfFold). diffutils builds no shared lib, so darwin needs no
       # --disable-shared (unlike bzip2's libbz2). Skip `make check`: gnulib's
       # own multi-threaded / getopt tests break under musl-static threads in the
-      # sandbox. Also drop the coreutils `${pr}` store-path leak from PR_PROGRAM
-      # (diff -l shells out to `pr`; bare `pr` is looked up on PATH at runtime).
+      # sandbox.
+      #
+      # coreutils is overridden to the native build one on every platform: it is
+      # an unused build-input now (PR_PROGRAM is bare `pr`, see below), and
+      # pkgsStatic.coreutils drags pkgsStatic.gmp-with-cxx, whose configure
+      # rejects the static build-clang on the Mac builder (and is pointless to
+      # build on linux).
       build = pkgs:
-        let
-          # darwin: pkgsStatic.coreutils drags pkgsStatic.gmp-with-cxx, whose
-          # configure rejects the static build-clang ("CC_FOR_BUILD doesn't seem
-          # to work") on the Mac builder. coreutils is only a build-time input
-          # (PR_PROGRAM is bare `pr`), so swap in the native build coreutils to
-          # drop the static gmp dep — same override windows.nix uses for mingw.
-          # Linux keeps pkgsStatic.coreutils (its gmp builds fine).
-          base =
-            if pkgs.stdenv.hostPlatform.isDarwin
-            then pkgs.pkgsStatic.diffutils.override { coreutils = pkgs.buildPackages.coreutils; }
-            else pkgs.pkgsStatic.diffutils;
-        in
-        base.overrideAttrs (old: {
+        (pkgs.pkgsStatic.diffutils.override { coreutils = pkgs.buildPackages.coreutils; }).overrideAttrs (old: {
           doCheck = false;
+          # `diff -l` (--paginate) shells out to `pr`. nixpkgs bakes the absolute
+          # ${coreutils}/bin/pr via PR_PROGRAM — a /nix/store runtime-closure leak
+          # (against the no-store-at-runtime rule). Drop that flag and pin the
+          # configure CACHE var to bare `pr`: diffutils' AC_PATH_PROG re-resolves
+          # a *relative* PR_PROGRAM against PATH (re-baking a store path), so
+          # `PR_PROGRAM=pr` alone does NOT stick — `ac_cv_path_PR_PROGRAM=pr`
+          # short-circuits the probe → `#define PR_PROGRAM "pr"`, looked up on
+          # PATH at runtime.
           configureFlags =
             (builtins.filter (f: !(pkgs.lib.hasPrefix "PR_PROGRAM=" f)) (old.configureFlags or [ ]))
-            ++ [ "PR_PROGRAM=pr" ];
+            ++ [ "ac_cv_path_PR_PROGRAM=pr" ];
         });
     };
 }
