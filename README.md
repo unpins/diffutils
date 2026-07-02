@@ -51,3 +51,11 @@ nix build
 
 The [Releases](https://github.com/unpins/diffutils/releases) page has standalone binaries.
 
+## Build notes
+
+- **Platforms:** Linux, macOS, Windows.
+- **Multicall:** on Linux/macOS the unpin-llvm engine compiles diffutils to bitcode and self-folds `cmp`/`diff`/`diff3`/`sdiff` into one binary. Windows is a native mingw PE.
+- **Windows caveat:** `diff3` and `sdiff` normally `popen` an external `diff`; the mingw build replaces that with a fork-free in-process `diff_main` (no external `diff` needed). One residual limitation: `diff -r` mangles non-ASCII filenames (msvcrt `readdir`).
+- **Man pages:** `cmp.1`, `diff.1`, `diff3.1`, and `sdiff.1` are embedded; read with `unpin man diffutils`.
+- **Tests:** the native `make check` is skipped — gnulib's own multi-threaded (`*-mt`, `test-thread_create`) and getopt meta-tests fail under static-musl threads in the build sandbox. diffutils' own functional tests (33/33) pass.
+
