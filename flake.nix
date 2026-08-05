@@ -23,15 +23,12 @@
       inherit self;
       name = "diffutils";
       windowsBuild = import ./windows.nix { inherit unpins-lib; };
-      smoke = [ "--version" ];
+      smoke = [ "--unpin-program=diff" "--version" ];
       smokePattern = "diff \\(GNU diffutils\\)";
 
-      # `diffutils --version` (the bare binary name) routes to diff, so
-      # defaultProgram pins it — `diffutils` is not itself one of the applets.
       # Pure C, no requires.cxx.
       engine = "unpin-llvm";
       multicall = {
-        defaultProgram = "diff";
         programs = [
           { name = "cmp"; }
           { name = "diff"; }
