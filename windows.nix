@@ -102,12 +102,12 @@ let
     postBuild = (oa.postBuild or "") + ''
       mkdir -p multicall
       # applets.list (TSV name<TAB>fn) + shared Recipe-A dispatcher generator.
-      # cmp/diff/diff3/sdiff are 1:1; an unknown/bare
-      # name (incl. CI's renamed smoke.exe) routes to diff (defaultApplet). The
-      # helper's copy_basename strips a trailing `.exe` and a `\\` dir prefix
-      # before matching.
+      # cmp/diff/diff3/sdiff are 1:1; diffutils is not itself a program, so a
+      # bare or unknown name lists instead of picking one — same as the native
+      # fold. The helper's copy_basename strips a trailing `.exe` and a `\\` dir
+      # prefix before matching.
       printf 'cmp\tcmp\ndiff\tdiff\ndiff3\tdiff3\nsdiff\tsdiff\n' > multicall/applets.list
-${unpins-lib.lib.multicallTableDispatcherC { name = "diffutils"; defaultApplet = "diff"; }}
+${unpins-lib.lib.multicallTableDispatcherC { name = "diffutils"; }}
       $CC -O2 -c -o multicall/dispatcher.o multicall/dispatcher.c
 
       # Recompile each main with -Dmain=<tool>_main; diff3/sdiff additionally get
