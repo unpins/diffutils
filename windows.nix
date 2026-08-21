@@ -27,7 +27,7 @@
 # with libver.a + lib/libdiffutils.a. mingw gcc has no fat-LTO, so the rename
 # could be objcopy, but diff3/sdiff must be RECOMPILED anyway (to pick up
 # -DUNPIN_MULTICALL); we recompile all four for uniformity.
-{ unpins-lib }:
+{ unpins-lib, winTable }:
 pkgs:
 let
   mingwPkgs = unpins-lib.lib.mingwStaticCross pkgs;
@@ -52,8 +52,6 @@ let
     		$(LIBINTL) $(LIBSIGSEGV) $(LIBUNISTRING) $(MBRTOWC_LIB) \
     		$(LIBC32CONV) $(SETLOCALE_NULL_LIB) $(GETRANDOM_LIB)
   '';
-
-  appletAliases = [ "cmp" "diff" "diff3" "sdiff" ];
 
   patched = (mingwPkgs.diffutils.override { coreutils = pkgs.coreutils; }).overrideAttrs (oa: {
     pname = "diffutils-multi";
@@ -100,14 +98,11 @@ let
     '';
 
     postBuild = (oa.postBuild or "") + ''
-      mkdir -p multicall
-      # applets.list (TSV name<TAB>fn) + shared Recipe-A dispatcher generator.
-      # cmp/diff/diff3/sdiff are 1:1; diffutils is not itself a program, so a
-      # bare or unknown name lists instead of picking one — same as the native
-      # fold. The helper's copy_basename strips a trailing `.exe` and a `\\` dir
-      # prefix before matching.
-      printf 'cmp\tcmp\ndiff\tdiff\ndiff3\tdiff3\nsdiff\tsdiff\n' > multicall/applets.list
-${unpins-lib.lib.multicallTableDispatcherC { name = "diffutils"; }}
+      # applets.list + dispatcher.c, both rendered from the ONE table the flake
+      # declares. cmp/diff/diff3/sdiff are 1:1; diffutils is not itself a
+      # program, so the table's naming rule lists on a bare or unknown name —
+      # the same rule the native fold reads, not a second copy of it.
+${winTable.emit { }}
       $CC -O2 -c -o multicall/dispatcher.o multicall/dispatcher.c
 
       # Recompile each main with -Dmain=<tool>_main; diff3/sdiff additionally get
@@ -137,6 +132,6 @@ in
 unpins-lib.lib.withAliases mingwPkgs
   {
     primary = "diffutils.exe";
-    aliases = appletAliases;
+    aliases = winTable.announced;
   }
   patched

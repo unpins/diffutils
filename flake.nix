@@ -19,22 +19,31 @@
   # residual cost vs cosmo is `diff -r` mangling non-ASCII filenames (msvcrt
   # readdir). See docs/platforms/mingw.md.
   outputs = { self, unpins-lib }:
+    let
+      # The windows fold's whole dispatch table, declared once: ./windows.nix
+      # renders applets.list and the dispatcher from it, `withAliases` announces
+      # it, and `multicall.windowsTable` hands the same value to CI — which is
+      # the only way CI can check the .exe against anything but itself.
+      programs = [
+        { name = "cmp"; }
+        { name = "diff"; }
+        { name = "diff3"; }
+        { name = "sdiff"; }
+      ];
+      winTable = unpins-lib.lib.multicallTableOf { name = "diffutils"; inherit programs; };
+    in
     unpins-lib.lib.mkStandaloneFlake {
       inherit self;
       name = "diffutils";
-      windowsBuild = import ./windows.nix { inherit unpins-lib; };
+      windowsBuild = import ./windows.nix { inherit unpins-lib winTable; };
       smoke = [ "--unpin-program=diff" "--version" ];
       smokePattern = "diff \\(GNU diffutils\\)";
 
       # Pure C, no requires.cxx.
       engine = "unpin-llvm";
       multicall = {
-        programs = [
-          { name = "cmp"; }
-          { name = "diff"; }
-          { name = "diff3"; }
-          { name = "sdiff"; }
-        ];
+        inherit programs;
+        windowsTable = winTable;
       };
       # Linux + darwin both self-fold through the engine (apps → bitcode →
       # selfFold). diffutils builds no shared lib, so darwin needs no
