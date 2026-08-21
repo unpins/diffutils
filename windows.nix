@@ -102,7 +102,11 @@ let
       # declares. cmp/diff/diff3/sdiff are 1:1; diffutils is not itself a
       # program, so the table's naming rule lists on a bare or unknown name —
       # the same rule the native fold reads, not a second copy of it.
-${winTable.emit { }}
+      # `windows = true`: this is mingw, so the dispatcher also rewrites the
+      # PEB command line — an applet that rebuilds argv from GetCommandLineW
+      # would otherwise still see the selector we just consumed. Every mingw
+      # fold inside nix-lib passes it; there is no reason for these to differ.
+${winTable.emit { windows = true; }}
       $CC -O2 -c -o multicall/dispatcher.o multicall/dispatcher.c
 
       # Recompile each main with -Dmain=<tool>_main; diff3/sdiff additionally get
