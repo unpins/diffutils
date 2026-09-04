@@ -53,9 +53,8 @@ The [Releases](https://github.com/unpins/diffutils/releases) page has standalone
 
 ## Build notes
 
-- **Platforms:** Linux, macOS, Windows.
-- **Multicall:** on Linux/macOS the unpin-llvm engine compiles diffutils to bitcode and self-folds `cmp`/`diff`/`diff3`/`sdiff` into one binary. Windows is a native mingw PE.
-- **Windows caveat:** `diff3` and `sdiff` normally `popen` an external `diff`; the mingw build replaces that with a fork-free in-process `diff_main` (no external `diff` needed). One residual limitation: `diff -r` mangles non-ASCII filenames (msvcrt `readdir`).
+- **Multicall:** the unpin-llvm engine compiles diffutils to bitcode and self-folds `cmp`/`diff`/`diff3`/`sdiff` into one binary, on Windows as well as Linux and macOS.
+- **Windows:** `diff3` and `sdiff` normally `popen` an external `diff`; with no `fork` they call the folded `diff` in-process instead, so no external `diff` is needed. One residual limitation: the C runtime lists directory entries in the system's ANSI code page, so a file whose name it cannot represent comes back as `?` and `diff -r` reports `No such file or directory` for that one file — the rest of the tree still compares.
 - **Man pages:** `cmp.1`, `diff.1`, `diff3.1`, and `sdiff.1` are embedded; read with `unpin man diffutils`.
 - **Tests:** the native `make check` is skipped — gnulib's own multi-threaded (`*-mt`, `test-thread_create`) and getopt meta-tests fail under static-musl threads in the build sandbox. diffutils' own functional tests (33/33) pass.
 
