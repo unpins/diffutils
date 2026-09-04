@@ -14,9 +14,9 @@ Part of the [unpins](https://unpins.org) catalog; install it with [`unpin`](http
 Run a program with [unpin](https://github.com/unpins/unpin):
 
 ```bash
-unpin diffutils diff -u old.txt new.txt
-unpin diffutils cmp a.bin b.bin
-unpin diffutils diff3 mine.txt base.txt yours.txt
+unpin diffutils --unpin-program=diff -u old.txt new.txt
+unpin diffutils --unpin-program=cmp a.bin b.bin
+unpin diffutils --unpin-program=diff3 mine.txt base.txt yours.txt
 ```
 
 To install the programs onto your PATH:
@@ -38,7 +38,7 @@ unpin install diffutils
 
 ## Man pages
 
-`cmp.1`, `diff.1`, `diff3.1`, and `sdiff.1` are embedded in the binary — read with `unpin man diffutils`.
+`cmp.1`, `diff.1`, `diff3.1`, and `sdiff.1` are embedded in the binary — read any with `unpin man diffutils <program>`, e.g. `unpin man diffutils diff`.
 
 ## Build locally
 
@@ -55,6 +55,5 @@ The [Releases](https://github.com/unpins/diffutils/releases) page has standalone
 
 - **Multicall:** the unpin-llvm engine compiles diffutils to bitcode and self-folds `cmp`/`diff`/`diff3`/`sdiff` into one binary, on Windows as well as Linux and macOS.
 - **Windows:** `diff3` and `sdiff` normally `popen` an external `diff`; with no `fork` they call the folded `diff` in-process instead, so no external `diff` is needed. One residual limitation: the C runtime lists directory entries in the system's ANSI code page, so a file whose name it cannot represent comes back as `?` and `diff -r` reports `No such file or directory` for that one file — the rest of the tree still compares.
-- **Man pages:** `cmp.1`, `diff.1`, `diff3.1`, and `sdiff.1` are embedded; read with `unpin man diffutils`.
 - **Tests:** the native `make check` is skipped — gnulib's own multi-threaded (`*-mt`, `test-thread_create`) and getopt meta-tests fail under static-musl threads in the build sandbox. diffutils' own functional tests (33/33) pass.
 
