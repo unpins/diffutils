@@ -19,20 +19,30 @@
  static char const *const option_help_msgid[] = {
 --- a/src/diff3.c
 +++ b/src/diff3.c
-@@ -198,6 +198,46 @@
+@@ -198,6 +198,56 @@
  
  static char const *diff_program = DEFAULT_DIFF_PROGRAM;
  
 +#ifdef UNPIN_MULTICALL
 +/* The folded `diff' lives in this binary as the renamed entry point diff_main
-+   (see diffutils/multicall.nix).  diff3/sdiff run it IN-PROCESS instead of
++   named by the fold (UNPIN_ENTRY_DIFF).  diff3/sdiff run it IN-PROCESS instead of
 +   execvp-ing an external `diff', so the single multicall binary stays
 +   standalone.  With a working fork (GNU/Linux, macOS) we run diff_main in a
 +   forked child for free state isolation; without fork (native Windows / mingw)
 +   we capture diff's stdout to a temp file and call diff_main directly in this
 +   process.  UNPIN_TEST_NOFORK forces the fork-free path even where fork exists,
 +   so it can be exercised on a POSIX dev box.  */
-+extern int diff_main (int, char **);
++/* The fold keeps exactly one symbol per program external -- the entry -- so
++   that is the only name a sibling applet can call.  The build passes it as
++   UNPIN_ENTRY_DIFF (nix-lib's lib.multicallEntrySym), which is why no spelling
++   of it appears here.  envp goes unread: diff's main takes (argc, argv), and
++   the entry only forwards a third argument nothing looks at -- we are the same
++   process, with the same environment, either way.  */
++#ifndef UNPIN_ENTRY_DIFF
++# error "UNPIN_MULTICALL without UNPIN_ENTRY_DIFF"
++#endif
++extern int UNPIN_ENTRY_DIFF (int, char **, char **);
++#define diff_main(c, v) UNPIN_ENTRY_DIFF ((c), (v), 0)
 +extern char const *program_name;
 +# if ! HAVE_WORKING_FORK || defined UNPIN_TEST_NOFORK
 +#  define UNPIN_INPROC_NOFORK 1
@@ -66,7 +76,7 @@
  /* Values for long options that do not have single-letter equivalents.  */
  enum
  {
-@@ -1122,7 +1162,38 @@
+@@ -1122,7 +1172,38 @@
    *ap++ = fileb;
    *ap = nullptr;
  
@@ -106,7 +116,7 @@
  
    int fds[2];
    if (pipe (fds) != 0)
-@@ -1139,11 +1210,26 @@
+@@ -1139,11 +1220,26 @@
            close (fds[1]);
          }
  
@@ -133,7 +143,7 @@
      }
  
    if (pid == -1)
-@@ -1193,25 +1279,40 @@
+@@ -1193,25 +1289,40 @@
    *output_placement = diff_result;
  
    int werrno = 0;
@@ -179,20 +189,30 @@
             _(status == 126
 --- a/src/sdiff.c
 +++ b/src/sdiff.c
-@@ -51,6 +51,46 @@
+@@ -51,6 +51,56 @@
  static char const *editor_program = DEFAULT_EDITOR_PROGRAM;
  static char const **diffargv;
  
 +#ifdef UNPIN_MULTICALL
 +/* The folded `diff' lives in this binary as the renamed entry point diff_main
-+   (see diffutils/multicall.nix).  diff3/sdiff run it IN-PROCESS instead of
++   named by the fold (UNPIN_ENTRY_DIFF).  diff3/sdiff run it IN-PROCESS instead of
 +   execvp-ing an external `diff', so the single multicall binary stays
 +   standalone.  With a working fork (GNU/Linux, macOS) we run diff_main in a
 +   forked child for free state isolation; without fork (native Windows / mingw)
 +   we capture diff's stdout to a temp file and call diff_main directly in this
 +   process.  UNPIN_TEST_NOFORK forces the fork-free path even where fork exists,
 +   so it can be exercised on a POSIX dev box.  */
-+extern int diff_main (int, char **);
++/* The fold keeps exactly one symbol per program external -- the entry -- so
++   that is the only name a sibling applet can call.  The build passes it as
++   UNPIN_ENTRY_DIFF (nix-lib's lib.multicallEntrySym), which is why no spelling
++   of it appears here.  envp goes unread: diff's main takes (argc, argv), and
++   the entry only forwards a third argument nothing looks at -- we are the same
++   process, with the same environment, either way.  */
++#ifndef UNPIN_ENTRY_DIFF
++# error "UNPIN_MULTICALL without UNPIN_ENTRY_DIFF"
++#endif
++extern int UNPIN_ENTRY_DIFF (int, char **, char **);
++#define diff_main(c, v) UNPIN_ENTRY_DIFF ((c), (v), 0)
 +extern char const *program_name;
 +# if ! HAVE_WORKING_FORK || defined UNPIN_TEST_NOFORK
 +#  define UNPIN_INPROC_NOFORK 1
@@ -226,7 +246,7 @@
  static char *volatile tmpname;
  static FILE *tmp;
  
-@@ -574,8 +614,21 @@
+@@ -574,8 +624,21 @@
        diffarg (argv[optind]);
        diffarg (argv[optind + 1]);
        diffarg (nullptr);
@@ -248,7 +268,7 @@
      }
    else
      {
-@@ -602,7 +655,35 @@
+@@ -602,7 +665,35 @@
        trapsigs ();
  
        FILE *diffout;
@@ -285,7 +305,7 @@
        {
          char *command = system_quote_argv (SCI_SYSTEM, (char **) diffargv);
          errno = 0;
-@@ -637,8 +718,22 @@
+@@ -637,8 +728,22 @@
                  close (diff_fds[1]);
                }
  
@@ -308,7 +328,7 @@
            }
  
          close (diff_fds[1]);
-@@ -661,14 +756,23 @@
+@@ -661,14 +766,23 @@
        ck_fclose (out);
  
        {
@@ -336,7 +356,7 @@
          ck_fclose (diffout);
          while (waitpid (diffpid, &wstatus, 0) < 0)
            if (errno == EINTR)
-@@ -676,6 +780,9 @@
+@@ -676,6 +790,9 @@
            else
              perror_fatal ("waitpid");
          diffpid = 0;
@@ -346,7 +366,7 @@
  #endif
  
          if (tmpname)
-@@ -687,10 +794,25 @@
+@@ -687,10 +804,25 @@
          if (! interact_ok)
            exiterr ();
  
