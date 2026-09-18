@@ -53,7 +53,6 @@ The [Releases](https://github.com/unpins/diffutils/releases) page has standalone
 
 ## Build notes
 
-- **Multicall:** the unpin-llvm engine compiles diffutils to bitcode and self-folds `cmp`/`diff`/`diff3`/`sdiff` into one binary, on Windows as well as Linux and macOS.
 - **Windows:** `diff3` and `sdiff` normally `popen` an external `diff`; with no `fork` they call the folded `diff` in-process instead, so no external `diff` is needed. One residual limitation: the C runtime lists directory entries in the system's ANSI code page, so a file whose name it cannot represent comes back as `?` and `diff -r` reports `No such file or directory` for that one file — the rest of the tree still compares.
 - **Tests:** the native `make check` is skipped — gnulib's own multi-threaded (`*-mt`, `test-thread_create`) and getopt meta-tests fail under static-musl threads in the build sandbox. diffutils' own functional tests (33/33) pass.
 
