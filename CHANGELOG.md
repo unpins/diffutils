@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [3.12-2] - 2026-09-26
+
 ### Fixed
 
 - `diff3` and `sdiff` now use the `diff` inside this binary. They were looking
