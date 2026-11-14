@@ -44,7 +44,7 @@ unpin install diffutils
 
 ```bash
 nix build
-./result/bin/diffutils --version
+./result/bin/diffutils --unpin-program=diff --version
 ```
 
 ## Manual download
