@@ -1,0 +1,11 @@
+--- a/man/Makefile.in
++++ b/man/Makefile.in
+@@ -2570,7 +2570,7 @@
+ sdiff.1: $S/sdiff.c sdiff.x
+ 
+ # Depend on the former to get version number changes.
+-$(dist_man1_MANS): $(SRC_VERSION_C) help2man
++$(dist_man1_MANS):
+ 	$(AM_V_GEN)base=`expr $@ : '\(.*\).1'`				\
+ 	  && test -x $(bin_dir)/$$base					\
+ 	  && (echo '[NAME]'						\
