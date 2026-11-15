@@ -44,7 +44,10 @@
       # runs in this process.
       entryDiff = ulib.multicallEntrySym { name = "diffutils"; program = "diff"; };
       inproc = drv: drv.overrideAttrs (old: {
-        patches = (old.patches or [ ]) ++ [ ./diffutils-inprocess.patch ];
+        patches = (old.patches or [ ]) ++ [
+          ./diffutils-inprocess.patch
+          ./man-no-help2man.patch
+        ];
 
         # Recompile the three affected objects AFTER the ordinary build, not
         # before: `make` links a standalone diff3 and sdiff, and the entry
@@ -73,11 +76,10 @@
         # Patching src/diff3.c + src/sdiff.c bumps their mtime past the shipped
         # man/diff3.1 + man/sdiff.1, so make re-fires `<tool>.1: <tool>.c` →
         # `help2man ./<tool>`, which RUNS the tool just built — impossible on
-        # every cross target. The tarball ships the complete 3.12 pages: drop
-        # the regeneration prereq and touch them past the patched sources.
+        # every cross target. The tarball ships the complete 3.12 pages:
+        # man-no-help2man.patch drops the regeneration prereq, and the pages
+        # are touched past the patched sources.
         postPatch = (if (old.postPatch or null) == null then "" else old.postPatch) + ''
-          substituteInPlace man/Makefile.in \
-            --replace-fail '$(dist_man1_MANS): $(SRC_VERSION_C) help2man' '$(dist_man1_MANS):'
           touch man/*.1
         '';
 
@@ -146,8 +148,9 @@
             '';
           }));
       # mingw maps `execvp` to `_execvp`, whose prototype is `const char *const *`;
-      # diff3.c/sdiff.c cast their argv to `(char **)`, which gcc-15 rejects as a
-      # hard -Wincompatible-pointer-types error. Those calls are in the upstream
+      # sdiff.c casts its argv to `(char **)` outside any fork guard, which the
+      # engine's clang rejects as a hard -Wincompatible-pointer-types error
+      # (diff3.c's execvp sits under HAVE_WORKING_FORK). Those calls are in the upstream
       # branch the ordinary build compiles and the fold discards — the objects it
       # keeps are the UNPIN_MULTICALL recompiles, which have no execvp at all.
       windowsBuild = pkgs: inproc

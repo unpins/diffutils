@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Changed
+
+- diffutils' own test suite now runs on every native Linux build (30 tests
+  pass, the UTF-8 ones included), so a regression fails the build instead of
+  shipping.
+
 ## [3.12-2] - 2026-09-26
 
 ### Fixed
