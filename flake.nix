@@ -114,11 +114,37 @@
       # an unused build-input now (PR_PROGRAM is bare `pr`), and
       # pkgsStatic.coreutils drags pkgsStatic.gmp-with-cxx, whose configure
       # rejects the static build-clang on the Mac builder (and is pointless to
-      # build on linux). Skip `make check`: gnulib's own multi-threaded /
-      # getopt tests break under musl-static threads in the sandbox.
+      # build on linux). The check runs diffutils' own tests/ only: gnulib's
+      # multi-threaded and getopt tests break under musl-static threads in
+      # the sandbox. darwin-native stays off until checked on the Mac.
       build = pkgs: inproc
         ((pkgs.pkgsStatic.diffutils.override { coreutils = pkgs.buildPackages.coreutils; })
-          .overrideAttrs (_: { doCheck = false; }));
+          .overrideAttrs (_: {
+            doCheck = pkgs.stdenv.hostPlatform.isLinux
+              && pkgs.stdenv.buildPlatform.canExecute pkgs.stdenv.hostPlatform;
+            # The UTF-8 tests look for a locale through glibc's `locale`;
+            # musl has no such program and takes any `*.UTF-8` name, so a
+            # stand-in answering for those lets them run.
+            nativeCheckInputs = [ pkgs.buildPackages.perl ];
+            preCheck = ''
+              mkdir -p "$TMPDIR/locale-bin"
+              cat > "$TMPDIR/locale-bin/locale" <<'EOF'
+              #!/bin/sh
+              case "$1:''${LC_ALL:-''${LC_CTYPE:-$LANG}}" in
+                charmap:*.UTF-8) echo UTF-8 ;;
+                charmap:*) echo ANSI_X3.4-1968 ;;
+                -a:*) echo C.UTF-8 ;;
+              esac
+              EOF
+              chmod +x "$TMPDIR/locale-bin/locale"
+              export PATH="$TMPDIR/locale-bin:$PATH"
+            '';
+            checkPhase = ''
+              runHook preCheck
+              make -C tests check VERBOSE=yes
+              runHook postCheck
+            '';
+          }));
       # mingw maps `execvp` to `_execvp`, whose prototype is `const char *const *`;
       # diff3.c/sdiff.c cast their argv to `(char **)`, which gcc-15 rejects as a
       # hard -Wincompatible-pointer-types error. Those calls are in the upstream
